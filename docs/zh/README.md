@@ -4,10 +4,10 @@
 
 ## 特性
 
-1. 轻量：只使用 MQ 作为设备服务与设备中心之间数据交换的中间件，无需引入多余组件；
+1. 轻量：只使用 MQTT 作为设备服务与设备中心之间数据交换的中间件，无需引入多余组件；
 2. 通用：
-    1. 将 MQ 封装为 MessageBus，包括常见配置与操作，因此可以很方便地替换所依赖的 MQ 组件；
-    2. 基于 MessageBus 定义和实现了通用的**元数据**与**物模型**操作规范；
+    1. 将 MQTT 封装为 MessageBus，向上层模块提供支持；
+    2. 基于 MessageBus 定义和实现了通用的**元数据操作**与**物模型**操作规范。
 
 ## 术语
 
@@ -38,20 +38,20 @@
 - 协议注册：将当前设备协议注册到设备管理中心；
 - 设备初始化：从设备重新拉取产品 & 设备等元数据，加载驱动；
 - 元数据监听：监听设备中心产品 & 设备等元数据的变更，加载/卸载/重加载驱动；
-- 数据接入：与实际设备进行连接，向 MessageBus 发送采集的设备数据（设备中心负责从 MessageBus 中读取出数据）；
-- 命令执行：与实际设备进行连接，从 MessageBus 获取调用的方法执行（设备中心负责将执行命令写入到 MessageBus）；
+- 数据接入：与实际设备进行连接，向 MessageBus 发送采集的设备数据（设备中心负责从 MessageBus 中读取出数据）;
+- 命令执行：与实际设备进行连接，从 MessageBus 获取调用的方法执行（设备中心负责将执行命令写入到 MessageBus）。
 
 ### 设备中心
 
 设备管理中心的简称，由 SDK 提供基础服务，嵌入到平台中使用。主要功能包括：
 
 - 协议管理：接收设备服务的注册请求 & 设备服务探活（失活则更新设备元数据）；
-- 产品管理：基于特定协议定义产品 & 产品 CURD；
-- 设备管理：基于特定产品定义设备 & 设备 CURD；
+- 产品管理：基于特定协议定义产品 & 产品 CRUD；
+- 设备管理：基于特定产品定义设备 & 设备 CRUD。
 
 ## Topic 约定
 
-因为 EDS 基于 MQ 实现数据交换，所以我们基于 MQ 的 Topic & Payload 概念定义了我们自己的数据格式及通信规范。
+因为 EDS 基于 MQTT 实现数据交换，所以我们基于 MQTT 的 Topic & Payload 概念定义了我们自己的数据格式及通信规范。
 
 ### 物模型
 
@@ -67,11 +67,11 @@
     - 对于隶属于同一个方法调用 `method call`，其 `request` 与 `response` 的 `DataID` 是相同的；
     - 对于非方法调用的其它类型的数据，其 `DataID` 都是不同的。
 
-### 元数据
+### 元数据操作
 
-对于元数据来说，Topic 格式为 `META/{MetaType}/{Method}/{OptType}/{DataID}`：
+对于元数据增删改查等操作来说，Topic 格式为 `META/{MetaType}/{Method}/{OptType}/{DataID}`：
 
 - `MetaType`：元数据类型，可选 `protocol | product | device`；
 - `MethodType`：调用方法，可选 `create | update | delete | get | list`，对于不同的元数据类型，可选范围是不同的；
 - `DataType`：数据类型，可选 `request | response | error`；
-- `DataID`：当前数据的 UUID，特别地，对于同一个方法，其 `request` 与 `response` 的 `DataID` 是相同的；
+- `DataID`：当前数据的 UUID，特别地，对于同一个方法，其 `request` 与 `response` 的 `DataID` 是相同的。
