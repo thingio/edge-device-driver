@@ -71,7 +71,7 @@
 
 对于元数据增删改查等操作来说，Topic 格式为 `META/{MetaType}/{Method}/{OptType}/{DataID}`：
 
-- `MetaType`：元数据类型，可选 `protocol | product | device`；
+- `OperationType`：元数据类型，可选 `protocol | product | device`；
 - `MethodType`：调用方法，可选 `create | update | delete | get | list`，对于不同的元数据类型，可选范围是不同的；
-- `DataType`：数据类型，可选 `request | response | error`；
+- `MethodMode`：数据类型，可选 `request | response | error`；
 - `DataID`：当前数据的 UUID，特别地，对于同一个方法，其 `request` 与 `response` 的 `DataID` 是相同的。
