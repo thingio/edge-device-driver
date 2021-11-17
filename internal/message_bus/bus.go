@@ -4,7 +4,7 @@ import (
 	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/thingio/edge-device-sdk/config"
-	"github.com/thingio/edge-device-sdk/internal/logger"
+	"github.com/thingio/edge-device-sdk/logger"
 	"strconv"
 	"sync"
 	"time"
@@ -15,7 +15,6 @@ func NewMessageBus(opts *config.MessageBusOptions, logger *logger.Logger) (Messa
 		timeout: time.Millisecond * time.Duration(opts.TimeoutMillisecond),
 		qos:     opts.QoS,
 		routes:  make(map[string]MessageHandler),
-		serves:  make(map[string]chan Data),
 		mutex:   sync.Mutex{},
 		logger:  logger,
 	}
@@ -40,8 +39,6 @@ type MessageBus interface {
 	Unsubscribe(topics ...string) error
 
 	Call(request Data) (response Data, err error)
-
-	Serve(request Data) (responses <-chan Data, err error)
 }
 
 type messageBus struct {
@@ -50,7 +47,6 @@ type messageBus struct {
 	qos     int
 
 	routes map[string]MessageHandler // topic -> handler
-	serves map[string]chan Data
 
 	mutex  sync.Mutex
 	logger *logger.Logger
@@ -161,39 +157,6 @@ func (mb *messageBus) Call(request Data) (response Data, err error) {
 	}
 }
 
-func (mb *messageBus) Serve(request Data) (<-chan Data, error) {
-	// subscribe request
-	reqMsg, err := request.ToMessage()
-	if err != nil {
-		return nil, err
-	}
-	reqTpc := reqMsg.Topic
-
-	mb.serves[reqTpc] = make(chan Data, 1)
-	if err = mb.Subscribe(func(msg *Message) {
-		// publish response
-		response, err := request.Response()
-		if err != nil {
-			mb.logger.WithError(err).Errorf("fail to parse the request and construct the response")
-			return
-		}
-		_, fields, err := msg.Parse()
-		if err != nil {
-			mb.logger.WithError(err).Error("fail to parse the message")
-			return
-		}
-		response.SetFields(fields)
-		mb.serves[reqTpc] <- response
-	}, reqTpc); err != nil {
-		return nil, err
-	}
-	defer func() {
-		close(mb.serves[reqTpc])
-		_ = mb.Unsubscribe(reqTpc)
-	}()
-	return mb.serves[reqTpc], nil
-}
-
 func (mb *messageBus) handleToken(token mqtt.Token) error {
 	if mb.timeout > 0 {
 		token.WaitTimeout(mb.timeout)
@@ -205,7 +168,9 @@ func (mb *messageBus) handleToken(token mqtt.Token) error {
 
 func (mb *messageBus) setClient(options *config.MessageBusOptions) error {
 	opts := mqtt.NewClientOptions()
-	opts.SetClientID("edge-device-sub-" + strconv.FormatInt(time.Now().UnixNano(), 10))
+	clientID := "edge-device-sub-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	mb.logger.Infof("the ID of client for the message bus is %s", clientID)
+	opts.SetClientID(clientID)
 	opts.AddBroker(fmt.Sprintf("%s://%s:%d", options.Protocol, options.Host, options.Port))
 	opts.SetConnectTimeout(time.Duration(options.ConnectTimoutMillisecond) * time.Millisecond)
 	opts.SetKeepAlive(time.Minute)
@@ -220,7 +185,7 @@ func (mb *messageBus) setClient(options *config.MessageBusOptions) error {
 
 func (mb *messageBus) onConnect(mc mqtt.Client) {
 	reader := mc.OptionsReader()
-	mb.logger.Infof("the connection with %s has been established.", reader.Servers()[0].String())
+	mb.logger.Infof("the connection with %s for the message bus has been established.", reader.Servers()[0].String())
 
 	for tpc, hdl := range mb.routes {
 		if err := mb.Subscribe(hdl, tpc); err != nil {
@@ -231,6 +196,6 @@ func (mb *messageBus) onConnect(mc mqtt.Client) {
 
 func (mb *messageBus) onConnectLost(mc mqtt.Client, err error) {
 	reader := mc.OptionsReader()
-	mb.logger.WithError(err).Errorf("the connection with %s has host, trying to reconnect.",
+	mb.logger.WithError(err).Errorf("the connection with %s for the message bus has lost, trying to reconnect.",
 		reader.Servers()[0].String())
 }

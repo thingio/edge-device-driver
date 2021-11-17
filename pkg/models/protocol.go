@@ -1,5 +1,9 @@
 package models
 
+type (
+	ProtocolPropertyKey = string // common property owned by devices with the same protocol
+)
+
 type Protocol struct {
 	ID           string      `json:"id"`   // 协议 ID
 	Name         string      `json:"name"` // 协议名称

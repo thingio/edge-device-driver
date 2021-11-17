@@ -28,7 +28,7 @@ const (
 )
 
 type MetaData struct {
-	data
+	MessageData
 
 	MetaType MetaDataType          `json:"meta_type"`
 	OptType  MetaDataOperation     `json:"opt_type"`
@@ -38,7 +38,7 @@ type MetaData struct {
 
 func (d *MetaData) ToMessage() (*Message, error) {
 	topic := NewMetaDataTopic(d.MetaType, d.OptType, d.OptMode, d.DataID)
-	payload, err := json.Marshal(d.fields)
+	payload, err := json.Marshal(d.Fields)
 	if err != nil {
 		return nil, err
 	}

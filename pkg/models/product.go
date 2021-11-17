@@ -1,7 +1,5 @@
 package models
 
-
-
 type Product struct {
 	ID         string             `json:"id"`                    // 产品 ID
 	Name       string             `json:"name"`                  // 产品名称
