@@ -2,6 +2,7 @@ package startup
 
 import (
 	"context"
+	"fmt"
 	"github.com/thingio/edge-device-sdk/config"
 	bus "github.com/thingio/edge-device-sdk/internal/message_bus"
 	"github.com/thingio/edge-device-sdk/internal/operations"
@@ -103,8 +104,36 @@ func (s *DeviceService) Serve() {
 	defer s.Stop(false)
 
 	s.registerProtocol()
+	defer s.unregisterProtocol()
+
+	s.activateDevices()
+	defer s.deactivateDevices()
 
 	s.wg.Wait()
 }
 
 func (s *DeviceService) Stop(force bool) {}
+
+func (s *DeviceService) getProduct(productID string) (*models.Product, error) {
+	v, ok := s.products.Load(productID)
+	if ok {
+		return v.(*models.Product), nil
+	}
+	return nil, fmt.Errorf("the product[%s] is not found in cache", productID)
+}
+
+func (s *DeviceService) getDevice(deviceID string) (*models.Device, error) {
+	v, ok := s.devices.Load(deviceID)
+	if ok {
+		return v.(*models.Device), nil
+	}
+	return nil, fmt.Errorf("the device[%s] is not found in cache", deviceID)
+}
+
+func (s *DeviceService) getDeviceConnector(deviceID string) (models.DeviceConnector, error) {
+	v, ok := s.deviceConnectors.Load(deviceID)
+	if ok {
+		return v.(models.DeviceConnector), nil
+	}
+	return nil, fmt.Errorf("the device[%s] is not activated", deviceID)
+}

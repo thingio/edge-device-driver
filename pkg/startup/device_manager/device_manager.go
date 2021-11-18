@@ -6,6 +6,7 @@ import (
 	bus "github.com/thingio/edge-device-sdk/internal/message_bus"
 	"github.com/thingio/edge-device-sdk/internal/operations"
 	"github.com/thingio/edge-device-sdk/logger"
+	"github.com/thingio/edge-device-sdk/pkg/models"
 	"github.com/thingio/edge-device-sdk/pkg/version"
 	"os"
 	"sync"
@@ -19,8 +20,9 @@ type DeviceManager struct {
 	protocols sync.Map
 
 	// operation clients
-	moc operations.DeviceManagerMetaOperationClient       // wrap the message bus to manipulate meta
-	doc operations.DeviceManagerDeviceDataOperationClient // warp the message bus to manipulate device data
+	moc       operations.DeviceManagerMetaOperationClient       // wrap the message bus to manipulate meta
+	doc       operations.DeviceManagerDeviceDataOperationClient // warp the message bus to manipulate device data
+	metaStore models.MetaStore                                  // meta store
 
 	// lifetime control variables for the device service
 	ctx    context.Context
@@ -29,21 +31,21 @@ type DeviceManager struct {
 	logger *logger.Logger
 }
 
-func (m *DeviceManager) Initialize(ctx context.Context, cancel context.CancelFunc) {
+func (m *DeviceManager) Initialize(ctx context.Context, cancel context.CancelFunc, metaStore models.MetaStore) {
 	m.logger = logger.NewLogger()
 
 	m.Version = version.Version
 
 	m.protocols = sync.Map{}
 
-	m.initializeOperationClients()
+	m.initializeOperationClients(metaStore)
 
 	m.ctx = ctx
 	m.cancel = cancel
 	m.wg = sync.WaitGroup{}
 }
 
-func (m *DeviceManager) initializeOperationClients() {
+func (m *DeviceManager) initializeOperationClients(metaStore models.MetaStore) {
 	// TODO Read from the configuration file
 	options := &config.MessageBusOptions{
 		Host:                     "172.16.251.163",
@@ -76,6 +78,8 @@ func (m *DeviceManager) initializeOperationClients() {
 		os.Exit(1)
 	}
 	m.doc = doc
+
+	m.metaStore = metaStore
 }
 
 func (m *DeviceManager) Serve() {
@@ -83,6 +87,10 @@ func (m *DeviceManager) Serve() {
 
 	m.wg.Add(1)
 	go m.watchingProtocols()
+	m.wg.Add(1)
+	go m.watchingProductOperations()
+	m.wg.Add(1)
+	go m.watchingDeviceOperations()
 
 	m.wg.Wait()
 }

@@ -45,6 +45,7 @@ func newDeviceServiceProtocolOperationClient(mb bus.MessageBus,
 
 type DeviceServiceProtocolOperationClient interface {
 	RegisterProtocol(protocol *models.Protocol) error
+	UnregisterProtocol(protocolID string) error
 }
 type deviceServiceProtocolOperationClient struct {
 	mb     bus.MessageBus
@@ -57,7 +58,7 @@ func newDeviceServiceProductOperationClient(mb bus.MessageBus,
 }
 
 type DeviceServiceProductOperationClient interface {
-	ListProducts(protocolID string) error
+	ListProducts(protocolID string) ([]*models.Product, error)
 }
 type deviceServiceProductOperationClient struct {
 	mb     bus.MessageBus

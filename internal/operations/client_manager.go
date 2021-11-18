@@ -44,7 +44,8 @@ func newDeviceManagerProtocolOperationClient(mb bus.MessageBus,
 }
 
 type DeviceManagerProtocolOperationClient interface {
-	RegisterProtocols(registerProtocol func(protocol *models.Protocol) error) error
+	RegisterProtocols(register func(protocol *models.Protocol) error) error
+	UnregisterProtocols(unregister func(protocolID string) error) error
 }
 type deviceManagerProtocolOperationClient struct {
 	mb     bus.MessageBus
@@ -57,7 +58,7 @@ func newDeviceManagerProductOperationClient(mb bus.MessageBus,
 }
 
 type DeviceManagerProductOperationClient interface {
-	ListProducts(productID string) error
+	ListProducts(list func(protocolID string) ([]*models.Product, error)) error
 }
 type deviceManagerProductOperationClient struct {
 	mb     bus.MessageBus
@@ -70,7 +71,7 @@ func newDeviceManagerDeviceOperationClient(mb bus.MessageBus,
 }
 
 type DeviceManagerDeviceOperationClient interface {
-	ListDevices(productID string, listDevices func(productID string) ([]*models.Device, error)) error
+	ListDevices(list func(productID string) ([]*models.Device, error)) error
 }
 type deviceManagerDeviceOperationClient struct {
 	mb     bus.MessageBus
@@ -81,7 +82,7 @@ func NewDeviceManagerDeviceDataOperationClient(mb bus.MessageBus, logger *logger
 	return &deviceManagerDeviceDataOperationClient{mb: mb, logger: logger}, nil
 }
 
-type DeviceManagerDeviceDataOperationClient interface {}
+type DeviceManagerDeviceDataOperationClient interface{}
 
 type deviceManagerDeviceDataOperationClient struct {
 	mb     bus.MessageBus

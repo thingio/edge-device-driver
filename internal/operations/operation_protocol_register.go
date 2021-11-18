@@ -29,7 +29,7 @@ func (r *RegisterProtocolResponse) Marshal() (map[string]interface{}, error) {
 }
 
 // RegisterProtocols for the device manager takes the protocols from the message bus.
-func (c *deviceManagerProtocolOperationClient) RegisterProtocols(registerProtocol func(protocol *models.Protocol) error) error {
+func (c *deviceManagerProtocolOperationClient) RegisterProtocols(register func(protocol *models.Protocol) error) error {
 	schema := bus.NewMetaData(bus.MetaDataTypeProtocol, bus.MetaDataOperationCreate,
 		bus.MetaDataOperationModeRequest, bus.TopicWildcard)
 	message, err := schema.ToMessage()
@@ -49,7 +49,7 @@ func (c *deviceManagerProtocolOperationClient) RegisterProtocols(registerProtoco
 			return
 		}
 		protocol := &req.Protocol
-		if err := registerProtocol(protocol); err != nil {
+		if err := register(protocol); err != nil {
 			c.logger.Error(err.Error())
 			return
 		}
