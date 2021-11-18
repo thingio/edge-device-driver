@@ -7,7 +7,7 @@ import (
 	"github.com/thingio/edge-device-sdk/internal/operations"
 	"github.com/thingio/edge-device-sdk/logger"
 	"github.com/thingio/edge-device-sdk/pkg/models"
-	"github.com/thingio/edge-device-sdk/pkg/version"
+	"github.com/thingio/edge-device-sdk/version"
 	"os"
 	"sync"
 )

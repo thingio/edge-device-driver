@@ -55,8 +55,9 @@
 
 ### 物模型
 
-对于物模型来说，Topic 格式为 `DATA/{ProductID}/{DeviceID}/{OptType}/{DataID}`：
+对于物模型来说，Topic 格式为 `{Version}/DATA/{ProductID}/{DeviceID}/{OptType}/{DataID}`：
 
+- `Version`：SDK 版本；
 - `ProductID`：设备元数据中产品的 UUID，产品唯一；
 - `DeviceID`：设备元数据中设备的 UUID，设备唯一；
 - `OptType`，产生当前数据的操作类型：
@@ -69,8 +70,9 @@
 
 ### 元数据操作
 
-对于元数据增删改查等操作来说，Topic 格式为 `META/{MetaType}/{MethodType}/{MethodMode}/{DataID}`：
+对于元数据增删改查等操作来说，Topic 格式为 `{Version}/META/{MetaType}/{MethodType}/{MethodMode}/{DataID}`：
 
+- `Version`：SDK 版本；
 - `MetaType`：元数据类型，可选 `protocol | product | device`；
 - `MethodType`：调用方法，可选 `create | update | delete | get | list`，对于不同的元数据类型，可选范围是不同的；
 - `MethodMode`：数据类型，可选 `request | response | error`；
