@@ -20,12 +20,8 @@ type MessageData struct {
 }
 
 func (d *MessageData) SetFields(fields map[string]interface{}) {
-	if d.Fields == nil {
-		d.Fields = make(map[string]interface{})
-	}
-
 	for key, value := range fields {
-		d.Fields[key] = value
+		d.SetField(key, value)
 	}
 }
 

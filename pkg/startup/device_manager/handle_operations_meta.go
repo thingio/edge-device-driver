@@ -10,11 +10,11 @@ func (m *DeviceManager) watchingProtocols() {
 		m.wg.Done()
 	}()
 
-	if err := m.moc.RegisterProtocols(m.registerProtocol); err != nil {
+	if err := m.moc.OnRegisterProtocols(m.registerProtocol); err != nil {
 		m.logger.WithError(err).Error("fail to wait for registering protocols")
 		return
 	}
-	if err := m.moc.UnregisterProtocols(m.unregisterProtocol); err != nil {
+	if err := m.moc.OnUnregisterProtocols(m.unregisterProtocol); err != nil {
 		m.logger.WithError(err).Error("fail to wait for unregistering protocols")
 		return
 	}
@@ -50,11 +50,11 @@ func (m *DeviceManager) watchingProductOperations() {
 		m.wg.Done()
 	}()
 
-	if err := m.moc.ListProducts(m.metaStore.ListProducts); err != nil {
+	if err := m.moc.OnListProducts(m.metaStore.ListProducts); err != nil {
 		m.logger.WithError(err).Error("fail to wait for listing products")
 		return
 	} else {
-		m.logger.Infof("start to watch the operations for product...")
+		m.logger.Infof("start to watch the changes for product...")
 	}
 }
 
@@ -63,10 +63,10 @@ func (m *DeviceManager) watchingDeviceOperations() {
 		m.wg.Done()
 	}()
 
-	if err := m.moc.ListDevices(m.metaStore.ListDevices); err != nil {
+	if err := m.moc.OnListDevices(m.metaStore.ListDevices); err != nil {
 		m.logger.WithError(err).Error("fail to wait for listing devices")
 		return
 	} else {
-		m.logger.Infof("start to watch the operations for device...")
+		m.logger.Infof("start to watch the changes for device...")
 	}
 }

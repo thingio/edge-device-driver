@@ -46,17 +46,7 @@ func (m *DeviceManager) Initialize(ctx context.Context, cancel context.CancelFun
 }
 
 func (m *DeviceManager) initializeOperationClients(metaStore models.MetaStore) {
-	// TODO Read from the configuration file
-	options := &config.MessageBusOptions{
-		Host:                     "172.16.251.163",
-		Port:                     1883,
-		Protocol:                 "tcp",
-		ConnectTimoutMillisecond: 30000,
-		TimeoutMillisecond:       1000,
-		QoS:                      0,
-		CleanSession:             false,
-	}
-	mb, err := bus.NewMessageBus(options, m.logger)
+	mb, err := bus.NewMessageBus(&config.C.MessageBus, m.logger)
 	if err != nil {
 		m.logger.WithError(err).Error("fail to initialize the message bus")
 		os.Exit(1)

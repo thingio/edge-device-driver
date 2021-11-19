@@ -84,6 +84,8 @@ func NewDeviceServiceDeviceDataOperationClient(mb bus.MessageBus,
 }
 
 type DeviceServiceDeviceDataOperationClient interface {
+	Publish(data models.DeviceData) error
+	Subscribe(handler bus.MessageHandler, topic string) error
 }
 
 type deviceServiceDeviceDataOperationClient struct {

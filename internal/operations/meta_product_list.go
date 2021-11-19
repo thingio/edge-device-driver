@@ -27,8 +27,8 @@ func (r *ListProductsResponse) Marshal() (map[string]interface{}, error) {
 	return Struct2Map(*r)
 }
 
-// ListProducts for the device manager puts products into the message bus.
-func (c *deviceManagerProductOperationClient) ListProducts(list func(protocolID string) ([]*models.Product, error)) error {
+// OnListProducts for the device manager puts products into the message bus.
+func (c *deviceManagerProductOperationClient) OnListProducts(list func(protocolID string) ([]*models.Product, error)) error {
 	schema := bus.NewMetaData(bus.MetaDataTypeProduct, bus.MetaDataOperationList,
 		bus.MetaDataOperationModeRequest, bus.TopicWildcard)
 	message, err := schema.ToMessage()
@@ -39,7 +39,8 @@ func (c *deviceManagerProductOperationClient) ListProducts(list func(protocolID 
 		// parse request from the message
 		_, fields, err := msg.Parse()
 		if err != nil {
-			c.logger.WithError(err).Error("fail to parse the message for listing products")
+			c.logger.WithError(err).Errorf("fail to parse the message[%s] for listing products",
+				msg.ToString())
 			return
 		}
 		req := &ListProductsRequest{}

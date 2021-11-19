@@ -7,8 +7,8 @@ import (
 )
 
 type (
-	DeviceDataOperation  = string // the type of device data's operation
-	DeviceDataReportMode = string // the mode of device data's reporting
+	DeviceDataOperation          = string // the type of device data's operation
+	DeviceDataPropertyReportMode = string // the mode of device data's reporting
 
 	ProductFuncID     = string        // product functionality ID
 	ProductFuncType   = string        // product functionality type
@@ -25,15 +25,15 @@ const (
 	DeviceDataOperationResponse DeviceDataOperation = "response" // Device Method Response
 	DeviceDataOperationError    DeviceDataOperation = "error"    // Device Method Error
 
-	DeviceDataReportModeRegular DeviceDataReportMode = "regular" // report device data at regular intervals, e.g. 5s, 1m, 0.5h
-	DeviceDataReportModeChanged DeviceDataReportMode = "changed" // report device data while changed
+	DeviceDataReportModePeriodical DeviceDataPropertyReportMode = "periodical" // report device data at intervals, e.g. 5s, 1m, 0.5h
+	DeviceDataReportModeMutated    DeviceDataPropertyReportMode = "mutated"    // report device data while mutated
 
 	PropertyFunc ProductFuncType = "props"   // product property's functionality
 	EventFunc    ProductFuncType = "events"  // product event's functionality
 	MethodFunc   ProductFuncType = "methods" // product method's functionality
 
-	DeviceDataMultiPropsID   = "*"
-	DeviceDataMultiPropsName = "多属性"
+	DeviceDataMultiPropsID   ProductFuncID = "*"
+	DeviceDataMultiPropsName               = "多属性"
 )
 
 // Opts2FuncType maps operation upon device data as product's functionality.

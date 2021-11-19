@@ -2,7 +2,7 @@ package operations
 
 import "encoding/json"
 
-type OperationMessage interface {
+type MetaMessage interface {
 	Unmarshal(fields map[string]interface{}) error
 	Marshal() (map[string]interface{}, error)
 }

@@ -1,5 +1,15 @@
 package config
 
+func LoadMessageBusOptions(options *MessageBusOptions) {
+	LoadEnv(&options.Host, "MESSAGE_BUS_HOST")
+	LoadEnvInt(&options.Port, "MESSAGE_BUS_PORT")
+	LoadEnv(&options.Protocol, "MESSAGE_BUS_PROTOCOL")
+	LoadEnvInt(&options.ConnectTimoutMillisecond, "MESSAGE_BUS_CONNECT_TIMEOUT_MS")
+	LoadEnvInt(&options.TimeoutMillisecond, "MESSAGE_BUS_TIMEOUT_MS")
+	LoadEnvInt(&options.QoS, "MESSAGE_BUS_QOS")
+	LoadEnvBool(&options.CleanSession, "MESSAGE_BUS_CLEAN_SESSION")
+}
+
 type MessageBusOptions struct {
 	// Host is the hostname or IP address of the MQTT broker.
 	Host string `json:"host" yaml:"host"`

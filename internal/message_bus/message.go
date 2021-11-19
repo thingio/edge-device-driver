@@ -2,6 +2,7 @@ package bus
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type MessageHandler func(msg *Message)
@@ -26,4 +27,8 @@ func (m *Message) Parse() ([]string, map[string]interface{}, error) {
 		return nil, nil, err
 	}
 	return tagValues, fields, nil
+}
+
+func (m *Message) ToString() string {
+	return fmt.Sprintf("%+v", *m)
 }

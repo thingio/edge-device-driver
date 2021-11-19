@@ -27,8 +27,8 @@ func (r *UnregisterProtocolResponse) Marshal() (map[string]interface{}, error) {
 	return Struct2Map(*r)
 }
 
-// UnregisterProtocols for the device manager takes the protocols from the message bus.
-func (c *deviceManagerProtocolOperationClient) UnregisterProtocols(unregister func(protocolID string) error) error {
+// OnUnregisterProtocols for the device manager takes the protocols from the message bus.
+func (c *deviceManagerProtocolOperationClient) OnUnregisterProtocols(unregister func(protocolID string) error) error {
 	schema := bus.NewMetaData(bus.MetaDataTypeProtocol, bus.MetaDataOperationDelete,
 		bus.MetaDataOperationModeRequest, bus.TopicWildcard)
 	message, err := schema.ToMessage()
@@ -39,7 +39,8 @@ func (c *deviceManagerProtocolOperationClient) UnregisterProtocols(unregister fu
 		// parse request from the message
 		_, fields, err := msg.Parse()
 		if err != nil {
-			c.logger.WithError(err).Error("fail to parse the message for unregistering protocol")
+			c.logger.WithError(err).Errorf("fail to parse the message[%s] for unregistering protocol",
+				msg.ToString())
 			return
 		}
 		req := &UnregisterProtocolRequest{}

@@ -28,8 +28,8 @@ func (r *RegisterProtocolResponse) Marshal() (map[string]interface{}, error) {
 	return Struct2Map(*r)
 }
 
-// RegisterProtocols for the device manager takes the protocols from the message bus.
-func (c *deviceManagerProtocolOperationClient) RegisterProtocols(register func(protocol *models.Protocol) error) error {
+// OnRegisterProtocols for the device manager takes the protocols from the message bus.
+func (c *deviceManagerProtocolOperationClient) OnRegisterProtocols(register func(protocol *models.Protocol) error) error {
 	schema := bus.NewMetaData(bus.MetaDataTypeProtocol, bus.MetaDataOperationCreate,
 		bus.MetaDataOperationModeRequest, bus.TopicWildcard)
 	message, err := schema.ToMessage()
@@ -40,7 +40,8 @@ func (c *deviceManagerProtocolOperationClient) RegisterProtocols(register func(p
 		// parse request from the message
 		_, fields, err := msg.Parse()
 		if err != nil {
-			c.logger.WithError(err).Error("fail to parse the message for registering protocol")
+			c.logger.WithError(err).Errorf("fail to parse the message[%s] for registering protocol",
+				msg.ToString())
 			return
 		}
 		req := &RegisterProtocolRequest{}

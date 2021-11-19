@@ -24,11 +24,14 @@ type DeviceService struct {
 	connectorBuilder models.ConnectorBuilder
 
 	// caches
-	products         sync.Map
-	devices          sync.Map
-	deviceConnectors sync.Map
+	products                   sync.Map
+	devices                    sync.Map
+	deviceConnectors           sync.Map
+	unsupportedDeviceDataTypes map[models.DeviceDataOperation]struct{}
+	deviceDataHandlers         map[models.DeviceDataOperation]DeviceDataHandler
 
 	// operation clients
+	bus chan models.DeviceData
 	moc operations.DeviceServiceMetaOperationClient       // wrap the message bus to manipulate
 	doc operations.DeviceServiceDeviceDataOperationClient // warp the message bus to manipulate device data
 
@@ -66,17 +69,9 @@ func (s *DeviceService) Initialize(ctx context.Context, cancel context.CancelFun
 }
 
 func (s *DeviceService) initializeOperationClients() {
-	// TODO Read from the configuration file
-	options := &config.MessageBusOptions{
-		Host:                     "172.16.251.163",
-		Port:                     1883,
-		Protocol:                 "tcp",
-		ConnectTimoutMillisecond: 30000,
-		TimeoutMillisecond:       1000,
-		QoS:                      0,
-		CleanSession:             false,
-	}
-	mb, err := bus.NewMessageBus(options, s.logger)
+	s.bus = make(chan models.DeviceData, 100)
+
+	mb, err := bus.NewMessageBus(&config.C.MessageBus, s.logger)
 	if err != nil {
 		s.logger.WithError(err).Error("fail to initialize the message bus")
 		os.Exit(1)
@@ -108,6 +103,9 @@ func (s *DeviceService) Serve() {
 
 	s.activateDevices()
 	defer s.deactivateDevices()
+
+	s.publishingDeviceData()
+	s.handlingDeviceData()
 
 	s.wg.Wait()
 }

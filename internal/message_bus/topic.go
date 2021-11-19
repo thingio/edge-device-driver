@@ -18,7 +18,7 @@ type TopicType string
 
 // Topic returns the topic that could subscribe all messages belong to this type.
 func (t TopicType) Topic() string {
-	return strings.Join([]string{version.Version, string(t)}, TopicSep) + TopicWildcard
+	return strings.Join([]string{version.Version, string(t), TopicWildcard}, TopicSep)
 }
 
 const (

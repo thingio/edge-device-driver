@@ -6,7 +6,6 @@ import (
 	"github.com/thingio/edge-device-sdk/config"
 	"github.com/thingio/edge-device-sdk/logger"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -15,7 +14,6 @@ func NewMessageBus(opts *config.MessageBusOptions, logger *logger.Logger) (Messa
 		timeout: time.Millisecond * time.Duration(opts.TimeoutMillisecond),
 		qos:     opts.QoS,
 		routes:  make(map[string]MessageHandler),
-		mutex:   sync.Mutex{},
 		logger:  logger,
 	}
 	if err := mb.setClient(opts); err != nil {
@@ -30,7 +28,7 @@ type MessageBus interface {
 
 	Connect() error
 
-	Disconnected() error
+	Disconnect() error
 
 	Publish(data Data) error
 
@@ -48,7 +46,6 @@ type messageBus struct {
 
 	routes map[string]MessageHandler // topic -> handler
 
-	mutex  sync.Mutex
 	logger *logger.Logger
 }
 
@@ -65,7 +62,7 @@ func (mb *messageBus) Connect() error {
 	return mb.handleToken(token)
 }
 
-func (mb *messageBus) Disconnected() error {
+func (mb *messageBus) Disconnect() error {
 	if mb.IsConnected() {
 		mb.client.Disconnect(2000) // waiting 2s
 	}
@@ -83,9 +80,6 @@ func (mb *messageBus) Publish(data Data) error {
 }
 
 func (mb *messageBus) Subscribe(handler MessageHandler, topics ...string) error {
-	mb.mutex.Lock()
-	defer mb.mutex.Unlock()
-
 	filters := make(map[string]byte)
 	for _, topic := range topics {
 		mb.routes[topic] = handler
@@ -103,9 +97,6 @@ func (mb *messageBus) Subscribe(handler MessageHandler, topics ...string) error 
 }
 
 func (mb *messageBus) Unsubscribe(topics ...string) error {
-	mb.mutex.Lock()
-	defer mb.mutex.Unlock()
-
 	for _, topic := range topics {
 		delete(mb.routes, topic)
 	}
@@ -147,7 +138,8 @@ func (mb *messageBus) Call(request Data) (response Data, err error) {
 	case msg := <-ch:
 		_, fields, err := msg.Parse()
 		if err != nil {
-			return nil, fmt.Errorf("fail to parse message, got %s", err.Error())
+			return nil, fmt.Errorf("fail to parse the message: %s, got %s",
+				msg.ToString(), err.Error())
 		}
 		response.SetFields(fields)
 		return response, nil

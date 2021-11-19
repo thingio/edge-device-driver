@@ -44,8 +44,8 @@ func newDeviceManagerProtocolOperationClient(mb bus.MessageBus,
 }
 
 type DeviceManagerProtocolOperationClient interface {
-	RegisterProtocols(register func(protocol *models.Protocol) error) error
-	UnregisterProtocols(unregister func(protocolID string) error) error
+	OnRegisterProtocols(register func(protocol *models.Protocol) error) error
+	OnUnregisterProtocols(unregister func(protocolID string) error) error
 }
 type deviceManagerProtocolOperationClient struct {
 	mb     bus.MessageBus
@@ -58,7 +58,7 @@ func newDeviceManagerProductOperationClient(mb bus.MessageBus,
 }
 
 type DeviceManagerProductOperationClient interface {
-	ListProducts(list func(protocolID string) ([]*models.Product, error)) error
+	OnListProducts(list func(protocolID string) ([]*models.Product, error)) error
 }
 type deviceManagerProductOperationClient struct {
 	mb     bus.MessageBus
@@ -71,7 +71,7 @@ func newDeviceManagerDeviceOperationClient(mb bus.MessageBus,
 }
 
 type DeviceManagerDeviceOperationClient interface {
-	ListDevices(list func(productID string) ([]*models.Device, error)) error
+	OnListDevices(list func(productID string) ([]*models.Device, error)) error
 }
 type deviceManagerDeviceOperationClient struct {
 	mb     bus.MessageBus
@@ -79,12 +79,34 @@ type deviceManagerDeviceOperationClient struct {
 }
 
 func NewDeviceManagerDeviceDataOperationClient(mb bus.MessageBus, logger *logger.Logger) (DeviceManagerDeviceDataOperationClient, error) {
-	return &deviceManagerDeviceDataOperationClient{mb: mb, logger: logger}, nil
+	reads := make(map[models.ProductPropertyID]chan models.DeviceData)
+	events := make(map[models.ProductEventID]chan models.DeviceData)
+	return &deviceManagerDeviceDataOperationClient{
+		mb:     mb,
+		logger: logger,
+		reads:  reads,
+		events: events,
+	}, nil
 }
 
-type DeviceManagerDeviceDataOperationClient interface{}
+type DeviceManagerDeviceDataOperationClient interface {
+	Read(productID, deviceID string,
+		propertyID models.ProductPropertyID) (dd <-chan models.DeviceData, cc func(), err error)
+
+	Write(productID, deviceID string,
+		propertyID models.ProductPropertyID, value interface{}) error
+
+	Receive(productID, deviceID string,
+		eventID models.ProductEventID) (dd <-chan models.DeviceData, cc func(), err error)
+
+	Call(productID, deviceID string, methodID models.ProductMethodID,
+		req map[string]interface{}) (rsp map[string]interface{}, err error)
+}
 
 type deviceManagerDeviceDataOperationClient struct {
 	mb     bus.MessageBus
 	logger *logger.Logger
+
+	reads  map[string]chan models.DeviceData
+	events map[string]chan models.DeviceData
 }

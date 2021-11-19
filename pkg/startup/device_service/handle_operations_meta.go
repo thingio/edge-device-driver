@@ -15,6 +15,7 @@ func (s *DeviceService) registerProtocol() {
 	s.logger.Infof("success to register the protocol[%s] to the device manager", s.protocol.ID)
 }
 
+// unregisterProtocol tries to unregister the protocol from the device manager.
 func (s *DeviceService) unregisterProtocol() {
 	if err := s.moc.UnregisterProtocol(s.protocol.ID); err != nil {
 		s.logger.WithError(err).Errorf("fail to unregister the protocol[%s] "+
@@ -64,25 +65,34 @@ func (s *DeviceService) activateDevice(device *models.Device) error {
 		return err
 	}
 	if err := connector.Initialize(s.logger); err != nil {
+		s.logger.WithError(err).Error("fail to initialize the random device connector")
 		return err
 	}
 	if err := connector.Start(); err != nil {
+		s.logger.WithError(err).Error("fail to start the random device connector")
 		return err
 	}
 
-	// TODO What we need to pick up from the device? How do we pick up?
-	//for _, event := range product.Events {
-	//	if err := connector.Subscribe(event.Id, s.buffer); err != nil {
-	//		s.logger.WithError(err).Errorf("fail to subscribe the product event[%s]", event.Id)
-	//		continue
-	//	}
-	//}
+	if len(product.Properties) != 0 {
+		if err := connector.Watch(s.bus); err != nil {
+			s.logger.WithError(err).Error("fail to watch properties for the device")
+			return err
+		}
+	}
+
+	for _, event := range product.Events {
+		if err := connector.Subscribe(event.Id, s.bus); err != nil {
+			s.logger.WithError(err).Errorf("fail to subscribe the product event[%s]", event.Id)
+			continue
+		}
+	}
 
 	s.deviceConnectors.Store(device.ID, connector)
 	s.logger.Infof("success to activate the device[%s]", device.ID)
 	return nil
 }
 
+// deactivateDevices tries to deactivate all devices.
 func (s *DeviceService) deactivateDevices() {
 	s.deviceConnectors.Range(func(key, value interface{}) bool {
 		deviceID := key.(string)
@@ -93,6 +103,7 @@ func (s *DeviceService) deactivateDevices() {
 	})
 }
 
+// deactivateDevice is responsible for breaking up the connection with the real device.
 func (s *DeviceService) deactivateDevice(deviceID string) error {
 	connector, _ := s.getDeviceConnector(deviceID)
 	if connector == nil {

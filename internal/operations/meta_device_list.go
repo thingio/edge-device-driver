@@ -27,8 +27,8 @@ func (r *ListDevicesResponse) Marshal() (map[string]interface{}, error) {
 	return Struct2Map(*r)
 }
 
-// ListDevices for the device manager puts devices into the message bus.
-func (c *deviceManagerDeviceOperationClient) ListDevices(list func(productID string) ([]*models.Device, error)) error {
+// OnListDevices for the device manager puts devices into the message bus.
+func (c *deviceManagerDeviceOperationClient) OnListDevices(list func(productID string) ([]*models.Device, error)) error {
 	schema := bus.NewMetaData(bus.MetaDataTypeDevice, bus.MetaDataOperationList,
 		bus.MetaDataOperationModeRequest, bus.TopicWildcard)
 	message, err := schema.ToMessage()
@@ -39,7 +39,7 @@ func (c *deviceManagerDeviceOperationClient) ListDevices(list func(productID str
 		// parse request from the message
 		_, fields, err := msg.Parse()
 		if err != nil {
-			c.logger.WithError(err).Error("fail to parse the message for listing devices")
+			c.logger.WithError(err).Errorf("fail to parse the message[%s] for listing devices", msg.ToString())
 			return
 		}
 		req := &ListDevicesRequest{}
