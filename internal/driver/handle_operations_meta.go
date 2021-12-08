@@ -1,123 +1,70 @@
 package driver
 
 import (
-	"github.com/thingio/edge-device-std/config"
 	"github.com/thingio/edge-device-std/models"
-	"os"
 	"time"
 )
 
-// registerProtocol tries to register the protocol to the device manager.
-func (d *DeviceDriver) registerProtocol() {
-	d.wg.Add(1)
-
-	register := func() {
-		if err := d.moc.RegisterProtocol(d.protocol); err != nil {
-			d.logger.WithError(err).Errorf("fail to register the protocol[%s] "+
-				"to the device manager", d.protocol.ID)
-			os.Exit(1)
-		}
-		d.logger.Infof("success to register the protocol[%s] to the device manager", d.protocol.ID)
-	}
-	register()
-
-	go func() {
-		defer d.wg.Done()
-
-		protocolRegisterInterval := time.Duration(config.C.CommonOptions.ProtocolRegisterIntervalSecond) * time.Second
-		ticker := time.NewTicker(protocolRegisterInterval)
-		for {
-			select {
-			case <-ticker.C:
-				register()
-			case <-d.ctx.Done():
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-}
-
-// unregisterProtocol tries to unregister the protocol from the device manager.
-func (d *DeviceDriver) unregisterProtocol() {
-	if err := d.moc.UnregisterProtocol(d.protocol.ID); err != nil {
-		d.logger.WithError(err).Errorf("fail to unregister the protocol[%s] "+
-			"from the device manager", d.protocol.ID)
-	}
-	d.logger.Infof("success to unregister the protocol[%s] from the device manager", d.protocol.ID)
-}
-
 // activateDevices tries to activate all devices.
 func (d *DeviceDriver) activateDevices() {
-	products, err := d.moc.ListProducts(d.protocol.ID)
-	if err != nil {
-		d.logger.WithError(err).Error("fail to fetch products from the device manager")
-		os.Exit(1)
-	}
-	for _, product := range products {
-		devices, err := d.moc.ListDevices(product.ID)
-		if err != nil {
-			d.logger.WithError(err).Error("fail to fetch devices from the device manager")
-			os.Exit(1)
-		}
+	d.devices.Range(func(key, value interface{}) bool {
+		device := value.(*models.Device)
 
-		d.products.Store(product.ID, product)
-		for _, device := range devices {
-			if err := d.activateDevice(device); err != nil {
-				d.logger.WithError(err).Errorf("fail to activate the device[%s]", device.ID)
-				continue
-			}
-			d.devices.Store(device.ID, device)
+		if err := d.activateDevice(device); err != nil {
+			d.logger.WithError(err).Errorf("fail to activate the device[%s]", device.ID)
+			return true
 		}
-	}
+		d.putDevice(device)
+
+		return true
+	})
 }
 
 // activateDevice is responsible for establishing the connection with the real device.
 func (d *DeviceDriver) activateDevice(device *models.Device) error {
-	if connector, _ := d.getDeviceConnector(device.ID); connector != nil { // the device has been activated
+	if twin, _ := d.getDeviceTwin(device.ID); twin != nil { // the device has been activated
 		_ = d.deactivateDevice(device.ID)
 	}
 
-	// build, initialize and start connector
+	// build, initialize and start twin
 	product, err := d.getProduct(device.ProductID)
 	if err != nil {
 		return err
 	}
-	connector, err := d.dtBuilder(product, device)
+	twin, err := d.twinBuilder(product, device)
 	if err != nil {
 		return err
 	}
-	if err := connector.Initialize(d.logger); err != nil {
-		d.logger.WithError(err).Error("fail to initialize the random device connector")
+	if err = twin.Initialize(d.logger); err != nil {
+		d.logger.WithError(err).Error("fail to initialize the random device twin")
 		return err
 	}
-	if err := connector.Start(); err != nil {
-		d.logger.WithError(err).Error("fail to start the random device connector")
+	if err = twin.Start(); err != nil {
+		d.logger.WithError(err).Error("fail to start the random device twin")
 		return err
 	}
 
 	if len(product.Properties) != 0 {
-		if err := connector.Watch(d.bus); err != nil {
+		if err = twin.Watch(d.propsBus); err != nil {
 			d.logger.WithError(err).Error("fail to watch properties for the device")
 			return err
 		}
 	}
-
 	for _, event := range product.Events {
-		if err := connector.Subscribe(event.Id, d.bus); err != nil {
+		if err = twin.Subscribe(event.Id, d.eventBus); err != nil {
 			d.logger.WithError(err).Errorf("fail to subscribe the product event[%s]", event.Id)
 			continue
 		}
 	}
 
-	d.deviceConnectors.Store(device.ID, connector)
+	d.putDeviceTwin(device.ID, twin)
 	d.logger.Infof("success to activate the device[%s]", device.ID)
 	return nil
 }
 
 // deactivateDevices tries to deactivate all devices.
 func (d *DeviceDriver) deactivateDevices() {
-	d.deviceConnectors.Range(func(key, value interface{}) bool {
+	d.deviceTwins.Range(func(key, value interface{}) bool {
 		deviceID := key.(string)
 		if err := d.deactivateDevice(deviceID); err != nil {
 			d.logger.WithError(err).Errorf("fail to deactivate the device[%s]", deviceID)
@@ -128,15 +75,127 @@ func (d *DeviceDriver) deactivateDevices() {
 
 // deactivateDevice is responsible for breaking up the connection with the real device.
 func (d *DeviceDriver) deactivateDevice(deviceID string) error {
-	connector, _ := d.getDeviceConnector(deviceID)
-	if connector == nil {
+	twin, _ := d.getDeviceTwin(deviceID)
+	if twin == nil {
 		return nil
 	}
-	if err := connector.Stop(false); err != nil {
+	if err := twin.Stop(false); err != nil {
 		return err
 	}
 
-	d.deviceConnectors.Delete(deviceID)
+	d.deleteDeviceTwin(deviceID)
 	d.logger.Infof("success to deactivate the device[%s]", deviceID)
+	return nil
+}
+
+func (d *DeviceDriver) reportingDriverHealth() {
+	hello := true
+	ticker := time.NewTicker(time.Duration(d.cfg.CommonOptions.DriverHealthCheckIntervalSecond) * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			status := &models.DriverStatus{
+				Hello:    hello,
+				Protocol: d.protocol,
+				State:    models.DriverStateRunning,
+			}
+			if err := d.dc.PublishDriverStatus(status); err != nil {
+				d.logger.WithError(err).Errorf("fail to publish the status of the driver")
+			} else {
+				d.logger.Debugf("success to publish the status of the driver: %+v", status)
+			}
+			hello = false
+		case <-d.ctx.Done():
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+func (d *DeviceDriver) subscribeMetaMutation() error {
+	if err := d.ds.InitializeDriverHandler(d.protocol.ID, d.initializeDriver); err != nil {
+		return err
+	}
+
+	if err := d.ds.UpdateProductHandler(d.protocol.ID, d.updateProduct); err != nil {
+		return err
+	}
+	if err := d.ds.DeleteProductHandler(d.protocol.ID, d.removeProduct); err != nil {
+		return err
+	}
+
+	if err := d.ds.UpdateDeviceHandler(d.protocol.ID, d.updateDevice); err != nil {
+		return err
+	}
+	if err := d.ds.DeleteDeviceHandler(d.protocol.ID, d.removeDevice); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DeviceDriver) initializeDriver(products []*models.Product, devices []*models.Device) error {
+	for _, product := range products {
+		d.putProduct(product)
+	}
+
+	for _, device := range devices {
+		if err := d.updateDevice(device); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DeviceDriver) updateProduct(product *models.Product) error {
+	d.putProduct(product)
+
+	d.devices.Range(func(key, value interface{}) bool {
+		device := value.(*models.Device)
+		if device.ProductID != product.ID {
+			return true
+		}
+		if err := d.activateDevice(device); err != nil {
+			d.logger.WithError(err).Errorf("fail to reactivate the device[%s] after updating the product[%s]",
+				device.ID, product.ID)
+			return true
+		}
+		d.putDevice(device)
+		return true
+	})
+	return nil
+}
+
+func (d *DeviceDriver) removeProduct(productID string) error {
+	d.devices.Range(func(key, value interface{}) bool {
+		device := value.(*models.Device)
+		if device.ProductID != productID {
+			return true
+		}
+		if err := d.deactivateDevice(device.ID); err != nil {
+			d.logger.WithError(err).Errorf("fail to deactivate the device[%s] after updating the product[%s]",
+				device.ID, productID)
+			return true
+		}
+		d.deleteDevice(device.ID)
+		return true
+	})
+
+	d.deleteProduct(productID)
+	return nil
+}
+
+func (d *DeviceDriver) updateDevice(device *models.Device) error {
+	if err := d.activateDevice(device); err != nil {
+		return err
+	}
+	d.putDevice(device)
+	return nil
+}
+
+func (d *DeviceDriver) removeDevice(deviceID string) error {
+	if err := d.deactivateDevice(deviceID); err != nil {
+		return err
+	}
+	d.deleteDevice(deviceID)
 	return nil
 }

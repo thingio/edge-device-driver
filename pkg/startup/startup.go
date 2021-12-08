@@ -13,6 +13,10 @@ func Startup(protocol *models.Protocol, builder models.DeviceTwinBuilder) {
 	if err != nil {
 		panic(err)
 	}
-	ds.Initialize()
-	ds.Serve()
+	if err = ds.Initialize(); err != nil {
+		panic(err)
+	}
+	if err = ds.Serve(); err != nil {
+		panic(err)
+	}
 }
