@@ -1,1 +1,1 @@
-# edge-device-sdk
+# edge-device-driver
