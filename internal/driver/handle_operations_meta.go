@@ -14,8 +14,6 @@ func (d *DeviceDriver) activateDevices() {
 			d.logger.WithError(err).Errorf("fail to activate the device[%s]", device.ID)
 			return true
 		}
-		d.putDevice(device)
-
 		return true
 	})
 }
@@ -24,6 +22,10 @@ func (d *DeviceDriver) activateDevices() {
 func (d *DeviceDriver) activateDevice(device *models.Device) error {
 	if twin, _ := d.getDeviceTwin(device.ID); twin != nil { // the device has been activated
 		_ = d.deactivateDevice(device.ID)
+	}
+	if device.DeviceStatus == models.DeviceStateDisconnected {
+		d.logger.Infof("skip to activate the device[%s], because it is disconnected", device.ID)
+		return nil
 	}
 
 	// build, initialize and start twin
@@ -36,12 +38,16 @@ func (d *DeviceDriver) activateDevice(device *models.Device) error {
 		return err
 	}
 	if err = twin.Initialize(d.logger); err != nil {
-		d.logger.WithError(err).Error("fail to initialize the random device twin")
+		d.logger.WithError(err).Errorf("fail to initialize the device twin[%s]", device.ID)
 		return err
 	}
 	if err = twin.Start(); err != nil {
-		d.logger.WithError(err).Error("fail to start the random device twin")
+		d.logger.WithError(err).Errorf("fail to start the device twin[%s]", device.ID)
 		return err
+	} else if device.DeviceStatus != models.DeviceStateConnected {
+		old := device.DeviceStatus
+		device.DeviceStatus = models.DeviceStateConnected
+		d.logger.Infof("success to change the status of the device[%s] from %s to %s", device.ID, old, device.DeviceStatus)
 	}
 
 	if len(product.Properties) != 0 {
@@ -58,6 +64,7 @@ func (d *DeviceDriver) activateDevice(device *models.Device) error {
 	}
 
 	d.putDeviceTwin(device.ID, twin)
+	d.putDevice(device)
 	d.logger.Infof("success to activate the device[%s]", device.ID)
 	return nil
 }
@@ -84,29 +91,37 @@ func (d *DeviceDriver) deactivateDevice(deviceID string) error {
 	}
 
 	d.deleteDeviceTwin(deviceID)
+	d.deleteDevice(deviceID)
 	d.logger.Infof("success to deactivate the device[%s]", deviceID)
 	return nil
 }
 
 func (d *DeviceDriver) reportingDriverHealth() {
 	hello := true
-	ticker := time.NewTicker(time.Duration(d.cfg.CommonOptions.DriverHealthCheckIntervalSecond) * time.Second)
+	reportDriverHealth := func() {
+		status := &models.DriverStatus{
+			Hello:                     hello,
+			Protocol:                  d.protocol,
+			State:                     models.DriverStateRunning,
+			HealthCheckIntervalSecond: d.cfg.DriverOptions.DriverHealthCheckIntervalSecond,
+		}
+		if err := d.dc.PublishDriverStatus(status); err != nil {
+			d.logger.WithError(err).Errorf("fail to publish the status of the driver")
+		} else {
+			d.logger.Debugf("success to publish the status of the driver: %+v", status)
+		}
+		hello = false
+	}
+
+	interval := time.Duration(d.cfg.DriverOptions.DriverHealthCheckIntervalSecond) * time.Second
+	ticker := time.NewTicker(interval)
+
+	reportDriverHealth()
 	for {
 		select {
 		case <-ticker.C:
-			status := &models.DriverStatus{
-				Hello:    hello,
-				Protocol: d.protocol,
-				State:    models.DriverStateRunning,
-			}
-			if err := d.dc.PublishDriverStatus(status); err != nil {
-				d.logger.WithError(err).Errorf("fail to publish the status of the driver")
-			} else {
-				d.logger.Debugf("success to publish the status of the driver: %+v", status)
-			}
-			hello = false
+			reportDriverHealth()
 		case <-d.ctx.Done():
-			ticker.Stop()
 			return
 		}
 	}
@@ -117,17 +132,10 @@ func (d *DeviceDriver) subscribeMetaMutation() error {
 		return err
 	}
 
-	if err := d.ds.UpdateProductHandler(d.protocol.ID, d.updateProduct); err != nil {
+	if err := d.ds.MutateProductHandler(d.protocol.ID, d.updateProduct, d.removeProduct); err != nil {
 		return err
 	}
-	if err := d.ds.DeleteProductHandler(d.protocol.ID, d.removeProduct); err != nil {
-		return err
-	}
-
-	if err := d.ds.UpdateDeviceHandler(d.protocol.ID, d.updateDevice); err != nil {
-		return err
-	}
-	if err := d.ds.DeleteDeviceHandler(d.protocol.ID, d.removeDevice); err != nil {
+	if err := d.ds.MutateDeviceHandler(d.protocol.ID, d.updateDevice, d.removeDevice); err != nil {
 		return err
 	}
 	return nil
@@ -159,7 +167,6 @@ func (d *DeviceDriver) updateProduct(product *models.Product) error {
 				device.ID, product.ID)
 			return true
 		}
-		d.putDevice(device)
 		return true
 	})
 	return nil
@@ -176,7 +183,6 @@ func (d *DeviceDriver) removeProduct(productID string) error {
 				device.ID, productID)
 			return true
 		}
-		d.deleteDevice(device.ID)
 		return true
 	})
 
@@ -188,7 +194,6 @@ func (d *DeviceDriver) updateDevice(device *models.Device) error {
 	if err := d.activateDevice(device); err != nil {
 		return err
 	}
-	d.putDevice(device)
 	return nil
 }
 
@@ -196,6 +201,5 @@ func (d *DeviceDriver) removeDevice(deviceID string) error {
 	if err := d.deactivateDevice(deviceID); err != nil {
 		return err
 	}
-	d.deleteDevice(deviceID)
 	return nil
 }

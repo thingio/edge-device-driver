@@ -30,7 +30,6 @@ func NewDeviceDriver(ctx context.Context, cancel context.CancelFunc,
 
 		ctx:    ctx,
 		cancel: cancel,
-		logger: logger.NewLogger(),
 	}
 
 	return dd, nil
@@ -64,6 +63,11 @@ func (d *DeviceDriver) Initialize() error {
 		return err
 	} else {
 		d.cfg = cfg
+	}
+	if lg, err := logger.NewLogger(&d.cfg.LogOptions); err != nil {
+		return err
+	} else {
+		d.logger = lg
 	}
 
 	if err := d.initializeOperations(); err != nil {

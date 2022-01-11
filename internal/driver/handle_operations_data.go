@@ -162,33 +162,40 @@ func (d *DeviceDriver) filterValidProps(productID string,
 }
 
 func (d *DeviceDriver) reportingDevicesHealth() {
-	ticker := time.NewTicker(time.Duration(d.cfg.CommonOptions.DeviceHealthCheckIntervalSecond) * time.Second)
+	reportDevicesHealth := func() {
+		d.devices.Range(func(_, value interface{}) bool {
+			device := value.(*models.Device)
+			deviceTwin, err := d.getDeviceTwin(device.ID)
+			if err != nil {
+				d.logger.WithError(err).Errorf("fail to get the device[%s]'s twin", device.ID)
+				return true
+			}
+
+			status, err := deviceTwin.HealthCheck()
+			if err != nil {
+				d.logger.WithError(err).Errorf("fail to check the device[%s]'s health", device.ID)
+				return true
+			}
+			if err = d.dc.PublishDeviceStatus(d.protocol.ID, device.ID, device.ProductID, status); err != nil {
+				d.logger.WithError(err).Errorf("fail to publish the status of the driver[%s]", d.protocol.ID)
+			} else {
+				d.logger.Debugf("success to publish the status of the device[%s]: %+v", device.ID, status)
+			}
+
+			return true
+		})
+	}
+
+	interval := time.Duration(d.cfg.DriverOptions.DeviceHealthCheckIntervalSecond) * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	reportDevicesHealth()
 	for {
 		select {
 		case <-ticker.C:
-			d.devices.Range(func(_, value interface{}) bool {
-				device := value.(*models.Device)
-				deviceTwin, err := d.getDeviceTwin(device.ID)
-				if err != nil {
-					d.logger.WithError(err).Errorf("fail to get the device[%s]'s twin", device.ID)
-					return true
-				}
-
-				status, err := deviceTwin.HealthCheck()
-				if err != nil {
-					d.logger.WithError(err).Errorf("fail to check the device[%s]'s health", device.ID)
-					return true
-				}
-				if err = d.dc.PublishDeviceStatus(d.protocol.ID, device.ID, device.ProductID, status); err != nil {
-					d.logger.WithError(err).Errorf("fail to publish the status of the driver[%s]", d.protocol.ID)
-				} else {
-					d.logger.Debugf("success to publish the status of the device[%s]: %+v", device.ID, status)
-				}
-
-				return true
-			})
+			reportDevicesHealth()
 		case <-d.ctx.Done():
-			ticker.Stop()
 			return
 		}
 	}
