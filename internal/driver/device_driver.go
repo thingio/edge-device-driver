@@ -24,9 +24,9 @@ func NewDeviceDriver(ctx context.Context, cancel context.CancelFunc,
 		protocol:    protocol,
 		twinBuilder: twinBuilder,
 
-		products:    sync.Map{},
-		devices:     sync.Map{},
-		deviceTwins: sync.Map{},
+		products: sync.Map{},
+		devices:  sync.Map{},
+		runners:  sync.Map{},
 
 		ctx:    ctx,
 		cancel: cancel,
@@ -41,9 +41,9 @@ type DeviceDriver struct {
 	twinBuilder models.DeviceTwinBuilder
 
 	// caches
-	products    sync.Map
-	devices     sync.Map
-	deviceTwins sync.Map
+	products sync.Map
+	devices  sync.Map
+	runners  sync.Map
 
 	// operation clients
 	propsBus chan *models.DeviceDataWrapper
@@ -134,10 +134,6 @@ func (d *DeviceDriver) deleteProduct(productID string) {
 	d.products.Delete(productID)
 }
 
-func (d *DeviceDriver) putDevice(device *models.Device) {
-	d.devices.Store(device.ID, device)
-}
-
 func (d *DeviceDriver) getDevice(deviceID string) (*models.Device, error) {
 	v, ok := d.devices.Load(deviceID)
 	if ok {
@@ -146,22 +142,20 @@ func (d *DeviceDriver) getDevice(deviceID string) (*models.Device, error) {
 	return nil, fmt.Errorf("the device[%s] is not found in cache", deviceID)
 }
 
-func (d *DeviceDriver) deleteDevice(deviceID string) {
-	d.devices.Delete(deviceID)
-}
-
-func (d *DeviceDriver) putDeviceTwin(deviceID string, deviceTwin models.DeviceTwin) {
-	d.deviceTwins.Store(deviceID, deviceTwin)
-}
-
-func (d *DeviceDriver) getDeviceTwin(deviceID string) (models.DeviceTwin, error) {
-	v, ok := d.deviceTwins.Load(deviceID)
+func (d *DeviceDriver) getRunner(deviceID string) (TwinRunner, error) {
+	v, ok := d.runners.Load(deviceID)
 	if ok {
-		return v.(models.DeviceTwin), nil
+		return v.(TwinRunner), nil
 	}
 	return nil, fmt.Errorf("the device[%s] is not activated", deviceID)
 }
 
-func (d *DeviceDriver) deleteDeviceTwin(deviceID string) {
-	d.deviceTwins.Delete(deviceID)
+func (d *DeviceDriver) putDeviceAndRunner(deviceID string, device *models.Device, runner TwinRunner) {
+	d.runners.Store(deviceID, runner)
+	d.devices.Store(device.ID, device)
+}
+
+func (d *DeviceDriver) deleteDeviceAndRunner(deviceID string) {
+	d.devices.Delete(deviceID)
+	d.runners.Delete(deviceID)
 }

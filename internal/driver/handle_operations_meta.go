@@ -20,58 +20,37 @@ func (d *DeviceDriver) activateDevices() {
 
 // activateDevice is responsible for establishing the connection with the real device.
 func (d *DeviceDriver) activateDevice(device *models.Device) error {
-	if twin, _ := d.getDeviceTwin(device.ID); twin != nil { // the device has been activated
+	if _, err := d.getRunner(device.ID); err == nil { // the device has been activated
 		_ = d.deactivateDevice(device.ID)
-	}
-	if device.DeviceStatus == models.DeviceStateDisconnected {
-		d.logger.Infof("skip to activate the device[%s], because it is disconnected", device.ID)
-		return nil
 	}
 
 	// build, initialize and start twin
-	product, err := d.getProduct(device.ProductID)
+	runner, err := NewTwinRunner(d, device)
 	if err != nil {
 		return err
 	}
-	twin, err := d.twinBuilder(product, device)
-	if err != nil {
-		return err
-	}
-	if err = twin.Initialize(d.logger); err != nil {
+	if err := runner.Initialize(d.ctx); err != nil {
 		d.logger.WithError(err).Errorf("fail to initialize the device twin[%s]", device.ID)
 		return err
 	}
-	if err = twin.Start(); err != nil {
-		d.logger.WithError(err).Errorf("fail to start the device twin[%s]", device.ID)
-		return err
-	} else if device.DeviceStatus != models.DeviceStateConnected {
-		old := device.DeviceStatus
-		device.DeviceStatus = models.DeviceStateConnected
-		d.logger.Infof("success to change the status of the device[%s] from %s to %s", device.ID, old, device.DeviceStatus)
-	}
 
-	if len(product.Properties) != 0 {
-		if err = twin.Watch(d.propsBus); err != nil {
-			d.logger.WithError(err).Error("fail to watch properties for the device")
-			return err
+	go func() {
+		d.putDeviceAndRunner(device.ID, device, runner)
+		if err := runner.Start(); err != nil {
+			d.logger.WithError(err).Errorf("fail to start the device twin[%s]", device.ID)
+			if !d.cfg.DriverOptions.DeviceAutoReconnect {
+				d.deleteDeviceAndRunner(device.ID)
+			}
+			return
 		}
-	}
-	for _, event := range product.Events {
-		if err = twin.Subscribe(event.Id, d.eventBus); err != nil {
-			d.logger.WithError(err).Errorf("fail to subscribe the product event[%s]", event.Id)
-			continue
-		}
-	}
-
-	d.putDeviceTwin(device.ID, twin)
-	d.putDevice(device)
-	d.logger.Infof("success to activate the device[%s]", device.ID)
+		d.logger.Infof("success to activate the device[%s]", device.ID)
+	}()
 	return nil
 }
 
 // deactivateDevices tries to deactivate all devices.
 func (d *DeviceDriver) deactivateDevices() {
-	d.deviceTwins.Range(func(key, value interface{}) bool {
+	d.runners.Range(func(key, value interface{}) bool {
 		deviceID := key.(string)
 		if err := d.deactivateDevice(deviceID); err != nil {
 			d.logger.WithError(err).Errorf("fail to deactivate the device[%s]", deviceID)
@@ -82,16 +61,13 @@ func (d *DeviceDriver) deactivateDevices() {
 
 // deactivateDevice is responsible for breaking up the connection with the real device.
 func (d *DeviceDriver) deactivateDevice(deviceID string) error {
-	twin, _ := d.getDeviceTwin(deviceID)
-	if twin == nil {
-		return nil
-	}
-	if err := twin.Stop(false); err != nil {
-		return err
+	if runner, _ := d.getRunner(deviceID); runner != nil {
+		if err := runner.Stop(false); err != nil {
+			return err
+		}
 	}
 
-	d.deleteDeviceTwin(deviceID)
-	d.deleteDevice(deviceID)
+	d.deleteDeviceAndRunner(deviceID)
 	d.logger.Infof("success to deactivate the device[%s]", deviceID)
 	return nil
 }
