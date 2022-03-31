@@ -1,7 +1,6 @@
 package driver
 
 import (
-	"fmt"
 	"github.com/thingio/edge-device-std/errors"
 	"github.com/thingio/edge-device-std/models"
 	"time"
@@ -34,11 +33,11 @@ func (d *DeviceDriver) handleDataOperation() error {
 //	  mosquitto_sub -h 172.16.251.163 -p 1883 -t "DATA/v1/UP/randnum/randnum_test01/randnum_test01/float/READ/{ReqID}".
 func (d *DeviceDriver) handleRead(productID, deviceID string, propertyID models.ProductPropertyID) (
 	props map[models.ProductPropertyID]*models.DeviceData, err error) {
-	twin, err := d.getDeviceTwin(deviceID)
+	runner, err := d.getRunner(deviceID)
 	if err != nil {
 		return nil, errors.Internal.Cause(err, "fail to get the device twin[%s]", deviceID)
 	}
-	props, err = twin.Read(propertyID)
+	props, err = runner.Read(propertyID)
 	if err != nil {
 		d.logger.WithError(err).Errorf("fail to read softly the property[%s] "+
 			"from the device[%s]", propertyID, deviceID)
@@ -58,11 +57,11 @@ func (d *DeviceDriver) handleRead(productID, deviceID string, propertyID models.
 //	  mosquitto_sub -h 172.16.251.163 -p 1883 -t "DATA/v1/UP/randnum/randnum_test01/randnum_test01/float/HARD-READ/{ReqID}".
 func (d *DeviceDriver) handleHardRead(productID, deviceID string, propertyID models.ProductPropertyID) (
 	props map[models.ProductPropertyID]*models.DeviceData, err error) {
-	twin, err := d.getDeviceTwin(deviceID)
+	runner, err := d.getRunner(deviceID)
 	if err != nil {
 		return nil, errors.Internal.Cause(err, "fail to get the device twin[%s]", deviceID)
 	}
-	return twin.HardRead(propertyID)
+	return runner.HardRead(propertyID)
 }
 
 // handleWrite is responsible for handling the write request forwarded by the device manager.
@@ -76,16 +75,11 @@ func (d *DeviceDriver) handleHardRead(productID, deviceID string, propertyID mod
 //	  mosquitto_sub -h 172.16.251.163 -p 1883 -t "DATA/v1/UP/randnum/randnum_test01/randnum_test01/float/WRITE/{ReqID}".
 func (d *DeviceDriver) handleWrite(productID, deviceID string, propertyID models.ProductPropertyID,
 	props map[models.ProductPropertyID]*models.DeviceData) (err error) {
-	twin, err := d.getDeviceTwin(deviceID)
+	runner, err := d.getRunner(deviceID)
 	if err != nil {
 		return errors.Internal.Cause(err, "fail to get the device twin[%s]", deviceID)
 	}
-
-	validProps, err := d.filterValidProps(productID, propertyID, props)
-	if err != nil {
-		return errors.BadRequest.Error(err.Error())
-	}
-	if err = twin.Write(propertyID, validProps); err != nil {
+	if err = runner.Write(propertyID, props); err != nil {
 		d.logger.WithError(err).Errorf("fail to read hardly the property[%s] "+
 			"from the device[%s]", propertyID, deviceID)
 		return err
@@ -103,11 +97,11 @@ func (d *DeviceDriver) handleWrite(productID, deviceID string, propertyID models
 //	  mosquitto_sub -h 172.16.251.163 -p 1883 -t "v1/DATA/method/response/randnum_test01/randnum_test01/Intn/{ReqID}".
 func (d *DeviceDriver) handleCall(productID, deviceID string, methodID models.ProductMethodID,
 	ins map[string]*models.DeviceData) (outs map[string]*models.DeviceData, err error) {
-	twin, err := d.getDeviceTwin(deviceID)
+	runner, err := d.getRunner(deviceID)
 	if err != nil {
 		return nil, errors.Internal.Cause(err, "fail to get the device twin[%s]", deviceID)
 	}
-	outs, err = twin.Call(methodID, ins)
+	outs, err = runner.Call(methodID, ins)
 	if err != nil {
 		d.logger.WithError(err).Errorf("fail to call the method[%s] "+
 			"of the device[%s]", methodID, deviceID)
@@ -116,79 +110,41 @@ func (d *DeviceDriver) handleCall(productID, deviceID string, methodID models.Pr
 	return outs, nil
 }
 
-func (d *DeviceDriver) filterValidProps(productID string,
-	propertyID models.ProductPropertyID, props map[models.ProductPropertyID]*models.DeviceData) (
-	map[models.ProductPropertyID]*models.DeviceData, error) {
-	product, err := d.getProduct(productID)
-	if err != nil {
-		return nil, err
-	}
-
-	properties := map[models.ProductPropertyID]*models.ProductProperty{}
-	for _, property := range product.Properties {
-		properties[property.Id] = property
-	}
-
-	var values map[models.ProductPropertyID]*models.DeviceData
-	if propertyID == models.DeviceDataMultiPropsID {
-		tmp := make(map[models.ProductPropertyID]*models.DeviceData, len(props))
-		for k, v := range props {
-			property, ok := properties[k]
-			if !ok {
-				return nil, fmt.Errorf("undefined property: %s", propertyID)
-			}
-			if !property.Writeable {
-				return nil, fmt.Errorf("the property[%s] is read only", propertyID)
-			}
-			tmp[k] = v
-		}
-		values = tmp
-	} else {
-		property, ok := properties[propertyID]
-		if !ok {
-			return nil, fmt.Errorf("undefined property: %s", propertyID)
-		}
-		if !property.Writeable {
-			return nil, fmt.Errorf("the property[%s] is read only", propertyID)
-		}
-
-		v, ok := props[propertyID]
-		if !ok {
-			return nil, fmt.Errorf("the property[%s]'s value is missed", propertyID)
-		}
-		values = map[models.ProductPropertyID]*models.DeviceData{propertyID: v}
-	}
-	return values, nil
-}
-
 func (d *DeviceDriver) reportingDevicesHealth() {
-	ticker := time.NewTicker(time.Duration(d.cfg.CommonOptions.DeviceHealthCheckIntervalSecond) * time.Second)
+	reportDevicesHealth := func() {
+		d.devices.Range(func(_, value interface{}) bool {
+			device := value.(*models.Device)
+			runner, err := d.getRunner(device.ID)
+			if err != nil {
+				d.logger.WithError(err).Errorf("fail to get the device[%s]'s twin", device.ID)
+				return true
+			}
+
+			status, err := runner.HealthCheck()
+			if err != nil {
+				d.logger.WithError(err).Errorf("fail to check the device[%s]'s health", device.ID)
+				return true
+			}
+			if err = d.dc.PublishDeviceStatus(d.protocol.ID, device.ID, device.ProductID, status); err != nil {
+				d.logger.WithError(err).Errorf("fail to publish the status of the driver[%s]", d.protocol.ID)
+			} else {
+				d.logger.Debugf("success to publish the status of the device[%s]: %+v", device.ID, status)
+			}
+
+			return true
+		})
+	}
+
+	interval := time.Duration(d.cfg.DriverOptions.DeviceHealthCheckIntervalSecond) * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	reportDevicesHealth()
 	for {
 		select {
 		case <-ticker.C:
-			d.devices.Range(func(_, value interface{}) bool {
-				device := value.(*models.Device)
-				deviceTwin, err := d.getDeviceTwin(device.ID)
-				if err != nil {
-					d.logger.WithError(err).Errorf("fail to get the device[%s]'s twin", device.ID)
-					return true
-				}
-
-				status, err := deviceTwin.HealthCheck()
-				if err != nil {
-					d.logger.WithError(err).Errorf("fail to check the device[%s]'s health", device.ID)
-					return true
-				}
-				if err = d.dc.PublishDeviceStatus(d.protocol.ID, device.ID, device.ProductID, status); err != nil {
-					d.logger.WithError(err).Errorf("fail to publish the status of the driver[%s]", d.protocol.ID)
-				} else {
-					d.logger.Debugf("success to publish the status of the device[%s]: %+v", device.ID, status)
-				}
-
-				return true
-			})
+			reportDevicesHealth()
 		case <-d.ctx.Done():
-			ticker.Stop()
 			return
 		}
 	}
