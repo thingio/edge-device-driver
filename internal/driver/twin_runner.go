@@ -59,13 +59,13 @@ type twinRunner struct {
 
 	once   sync.Once
 	lock   sync.Mutex
+	parent context.Context
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 func (r *twinRunner) Initialize(ctx context.Context) error {
-	r.ctx, r.cancel = context.WithCancel(ctx)
-
+	r.parent = ctx
 	if product, err := r.driver.getProduct(r.device.ProductID); err != nil {
 		return err
 	} else if twin, err := r.driver.twinBuilder(product, r.device); err != nil {
@@ -87,7 +87,6 @@ func (r *twinRunner) Start() error {
 	cfg := r.driver.cfg.DriverOptions
 	if cfg.DeviceAutoReconnect {
 		go r.once.Do(r.autoReconnect)
-		return nil
 	}
 
 	return r.start()
@@ -122,6 +121,10 @@ func (r *twinRunner) autoReconnect() {
 	}
 }
 func (r *twinRunner) start() error {
+	if r.cancel != nil {
+		r.cancel()
+	}
+	r.ctx, r.cancel = context.WithCancel(r.parent)
 	if err := r.twin.Start(r.ctx); err != nil {
 		r.device.DeviceStatus = models.DeviceStateException
 		_ = r.driver.dc.PublishDeviceStatus(r.driver.protocol.ID, r.product.ID, r.device.ID, &models.DeviceStatus{
